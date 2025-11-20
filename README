@@ -1,0 +1,12 @@
+2D Autonomous Vacuum Cleaner Simulation (Q-Learning)
+
+This repository contains the code for a Reinforcement Learning project designed to simulate an intelligent robot vacuum cleaner navigating and cleaning a 2D grid environment.Project OverviewThe agent uses the Q-Learning algorithm to learn an optimal policy (pathfinding and cleaning strategy) through trial and error, aiming to maximize cleaned tiles while minimizing collisions and steps.Technologies UsedLanguage: Python 3UI/Visualization: PygameAI Algorithm: Q-LearningEnvironment Management: Anaconda / CondaVersion Control: GitFeaturesGrid-based environment with static obstacles (walls) and dirt tiles.Agent movement (turn_left, move_forward) and interaction (clean).A sensor system (scan()) providing the current state to the RL model.Setup and Installation1. Environment SetupClone the Repository:git clone [https://github.com/StudentAbdullahBUKC/Vacuum-Simulation-RL.git](https://github.com/StudentAbdullahBUKC/Vacuum-Simulation-RL.git)
+cd Vacuum-Simulation-RL
+
+Activate Conda Environment:conda activate tf-clean
+Install Dependencies:python -m pip install pygame numpy
+
+2. How to RunTraining: (To be implemented in agent.py) Run the training script to generate the Q-Table
+
+file.Simulation/Test:
+Run main.py to see the agent execute the learned policy in the Pygame window.python main.py

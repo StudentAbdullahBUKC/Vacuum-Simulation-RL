@@ -11,7 +11,7 @@ def train():
     env = GridWorld(render_mode=False)
     agent = VacuumAgent()
 
-    EPISODES = 20000  # Increased to 20,000 as requested
+    EPISODES = 100000  # Increased to 50,000 FROM 10000
 
     # Data storage
     episode_list = []

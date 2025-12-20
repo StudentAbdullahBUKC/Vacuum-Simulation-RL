@@ -26,14 +26,11 @@ REWARD_WALL = -20         # Increased Penalty (Was -10) - Fears walls more
 REWARD_DEATH = -200       # Massive penalty for dying
 
 # --- Q-Learning Hyperparameters ---
-LEARNING_RATE = 0.15      # Slightly faster learning (Was 0.1)
+LEARNING_RATE = 0.1      # Slightly faster learning (Was 0.1)
 DISCOUNT_FACTOR = 0.99    # Cares more about future rewards (Was 0.9)
 EPSILON = 1.0
-EPSILON_DECAY = 0.995      # Faster decay (Was 0.995)
-MIN_EPSILON = 0.05
-# --- Q-Learning Hyperparameters ---
-
-
+EPSILON_DECAY = 0.99995     # Faster decay (Was 0.995)
+MIN_EPSILON = 0.01
 
 
 # --- Colors ---

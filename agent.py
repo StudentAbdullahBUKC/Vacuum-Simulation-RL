@@ -1,161 +1,120 @@
 import numpy as np
 import random
+from collections import deque, defaultdict
 from config import *
+from bfs import bfs
+
+# -------- HIGH-LEVEL GOALS (RL decides ONLY these) --------
+GO_CLEAN = 0
+GO_DUMP = 1
+GO_CHARGE = 2
+IDLE = 3
 
 
 class VacuumAgent:
     def __init__(self):
-        # Position & Resources
         self.x = 0
         self.y = 0
         self.battery = MAX_BATTERY
         self.bin = 0
         self.is_alive = True
 
-        # Stats
-        self.dirt_cleaned = 0
-
-        # AI BRAIN (Q-Learning)
-        # Key: State Tuple -> Value: Array of Q-Values for 7 actions
         self.q_table = {}
-        self.epsilon = EPSILON  # Exploration rate
+        self.epsilon = EPSILON
 
+        self.current_goal = None
+        self.current_path = deque()
+
+    # ---------------- HIGH-LEVEL STATE ----------------
     def get_state(self, env):
-        """
-        Converts raw environment data into a Generalized State Tuple.
-        State = (North, South, East, West, Current, Battery_Status, Bin_Status)
-        """
-        # 1. Get Local Sensors (What is around me?)
-        # Returns (N, S, E, W, Current)
-        sensors = env.get_sensors(self.x, self.y)
+        dirt_left = np.count_nonzero(env.grid == DIRT)
 
-        # 2. Discretize Battery (Simplify to High/Low/Critical)
-        if self.battery < 20:
-            batt_state = 0  # Critical (Find charger NOW)
-        elif self.battery < 60:
-            batt_state = 1  # Low
+        if self.battery < 40:
+            batt = 0
+        elif self.battery < 120:
+            batt = 1
         else:
-            batt_state = 2  # High
+            batt = 2
 
-        # 3. Discretize Bin (Simplify to Full/Not Full)
-        bin_state = 1 if self.bin >= MAX_BIN else 0
+        bin_stat = 1 if self.bin >= MAX_BIN else 0
+        dirt_stat = 1 if dirt_left == 0 else 0
 
-        # Combine into one tuple
-        return sensors + (batt_state, bin_state)
+        return (batt, bin_stat, dirt_stat)
 
-    def choose_action(self, state):
-        """Epsilon-Greedy Strategy: Explore vs Exploit"""
-        # If this state is new, initialize it in the brain with zeros
-        if state not in self.q_table:
-            self.q_table[state] = np.zeros(7)  # 7 Actions
-
-        # Exploration (Random Guess)
+    # ---------------- GOAL SELECTION ----------------
+    def choose_goal(self, state):
         if random.random() < self.epsilon:
-            return random.randint(0, 6)
-
-        # Exploitation (Best Known Move)
-        else:
-            return np.argmax(self.q_table[state])
+            return random.randint(0, 3)
+        return np.argmax(self.q_table[state])
 
     def learn(self, state, action, reward, next_state):
-        """The Bellman Equation: Updates the Q-Value based on results"""
-        # Ensure next_state exists in table
+        if state not in self.q_table:
+            self.q_table[state] = np.zeros(4)
+
         if next_state not in self.q_table:
-            self.q_table[next_state] = np.zeros(7)
+            self.q_table[next_state] = np.zeros(4)
 
-        old_value = self.q_table[state][action]
-        next_max = np.max(self.q_table[next_state])
+        self.q_table[state][action] += LEARNING_RATE * (
+                reward
+                + DISCOUNT_FACTOR * np.max(self.q_table[next_state])
+                - self.q_table[state][action]
+        )
 
-        # Q(s,a) = Q(s,a) + lr * (reward + gamma * max(Q(s')) - Q(s,a))
-        new_value = old_value + LEARNING_RATE * (reward + DISCOUNT_FACTOR * next_max - old_value)
+    # ---------------- PATH EXECUTION ----------------
+    def move_step(self, env):
+        if not self.current_path:
+            return REWARD_STEP, False
 
-        self.q_table[state][action] = new_value
+        nx, ny = self.current_path.popleft()
 
-    def step(self, action, env):
-        """
-        Executes an action and updates the agent's state.
-        Actions: 0=Up, 1=Down, 2=Right, 3=Left, 4=Clean, 5=Charge, 6=Dump
-        """
-        prev_x, prev_y = self.x, self.y
+        if env.grid[nx][ny] in OBSTACLES:
+            return REWARD_WALL, False
 
+        self.x, self.y = nx, ny
+        self.battery -= BATTERY_COST_MOVE
 
-        if not self.is_alive:
+        if self.battery <= 0:
             return REWARD_DEATH, True
 
-        if self.battery < 20:
-            reward = -5  # High stress mode!
+        return REWARD_STEP, False
+
+    # ---------------- PLAN NEW GOAL ----------------
+    def plan(self, env, goal):
+        if goal == GO_CLEAN:
+            targets = np.argwhere(env.grid == DIRT)
+        elif goal == GO_DUMP:
+            targets = env.bin_positions
+        elif goal == GO_CHARGE:
+            targets = env.charger_positions
         else:
-            reward = REWARD_STEP  # Normal mode (-2)
+            return False
 
-        done = False
+        if len(targets) == 0:
+            return False
 
+        path = bfs(env, (self.x, self.y), targets)
+        if not path:
+            return False
 
+        self.current_path = deque(path)
+        return True
 
-        # Calculate potential new position
-        next_x, next_y = self.x, self.y
-        if action == 0:
-            next_x -= 1  # Up
-        elif action == 1:
-            next_x += 1  # Down
-        elif action == 2:
-            next_y += 1  # Right
-        elif action == 3:
-            next_y -= 1  # Left
+    # ---------------- INTERACTION ----------------
+    def interact(self, env):
+        reward = 0
 
-        # --- PHYSICS LOGIC ---
+        if env.grid[self.x][self.y] == DIRT and self.bin < MAX_BIN:
+            env.grid[self.x][self.y] = EMPTY
+            self.bin += 1
+            self.battery -= BATTERY_COST_CLEAN
+            reward += REWARD_CLEAN
 
-        # 1. MOVEMENT (Actions 0-3)
-        if action < 4:
-            # Check for Wall Collision
-            if env.grid[next_x][next_y] == WALL:
-                reward = REWARD_WALL
-            else:
-                self.x, self.y = next_x, next_y
-                self.battery -= BATTERY_COST_MOVE
+        elif env.grid[self.x][self.y] == BIN and self.bin > 0:
+            self.bin = 0
+            reward += REWARD_DUMP
 
-        # 2. CLEANING (Action 4)
-        elif action == 4:
-            current_tile = env.grid[self.x][self.y]
-            if current_tile == DIRT:
-                if self.bin < MAX_BIN:
-                    env.grid[self.x][self.y] = EMPTY
-                    self.bin += 1
-                    self.dirt_cleaned += 1
-                    reward = REWARD_CLEAN
-                    self.battery -= BATTERY_COST_CLEAN
-                else:
-                    reward = -5  # Bin full!
-            else:
-                reward = -2  # Wasted clean
+        elif env.grid[self.x][self.y] == CHARGER and self.battery < MAX_BATTERY:
+            self.battery = min(MAX_BATTERY, self.battery + 10)
+            reward += 5
 
-        # 3. CHARGING (Action 5)
-        elif action == 5:
-            if env.grid[self.x][self.y] == CHARGER:
-                # Big reward ONLY if we actually needed it
-                if self.battery < 60:
-                    reward = REWARD_CHARGE
-                self.battery = MAX_BATTERY
-            else:
-                reward = -5  # Not at charger
-
-        # 4. DUMPING (Action 6)
-        elif action == 6:
-            if env.grid[self.x][self.y] == BIN:
-                # Big reward ONLY if we actually needed it
-                if self.bin >= MAX_BIN:
-                    reward = REWARD_DUMP
-                self.bin = 0
-            else:
-                reward = -5  # Not at bin
-
-        # --- DEATH CHECK ---
-        if self.battery <= 0:
-            self.battery = 0
-            self.is_alive = False
-            reward = REWARD_DEATH
-            done = True
-
-        if self.x == prev_x and self.y == prev_y and action < 4:
-            reward -= 5  # Extra penalty for wasting time hitting walls
-
-        return reward, done
+        return reward

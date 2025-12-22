@@ -10,28 +10,36 @@ DIRT = 1
 WALL = 2
 CHARGER = 3
 BIN = 4
+SOFA_1 = 5
+SOFA_2 = 10
+BED = 6
+TABLE = 7
+CHAIR_UP = 11
+CHAIR_DOWN = 12
+WALL_UP = 8
+WALL_DOWN = 9
 
 # --- Agent Constraints ---
-MAX_BATTERY = 200
-MAX_BIN = 5
+MAX_BATTERY = 500
+MAX_BIN = 20
 BATTERY_COST_MOVE = 1
-BATTERY_COST_CLEAN = 2
+BATTERY_COST_CLEAN = 3
 
-# --- Rewards (TUNED FOR EFFICIENCY) ---
-REWARD_CLEAN = 50         # Increased (Was 20) - Makes dirt irresistible
-REWARD_CHARGE = 50
-REWARD_DUMP = 50
-REWARD_STEP = -1          # Increased Penalty (Was -1) - Forces speed
-REWARD_WALL = -20         # Increased Penalty (Was -10) - Fears walls more
-REWARD_DEATH = -200       # Massive penalty for dying
+# --- Rewards ---
+REWARD_CLEAN = 40
+REWARD_DUMP = 120
+REWARD_CHARGE = 40
+REWARD_STEP = -1
+REWARD_WALL = -10
+REWARD_REVISIT = -25
+REWARD_DEATH = -500
 
-# --- Q-Learning Hyperparameters ---
-LEARNING_RATE = 0.1      # Slightly faster learning (Was 0.1)
-DISCOUNT_FACTOR = 0.99    # Cares more about future rewards (Was 0.9)
+# --- Hyperparameters ---
+LEARNING_RATE = 0.15
+DISCOUNT_FACTOR = 0.9
 EPSILON = 1.0
-EPSILON_DECAY = 0.99995     # Faster decay (Was 0.995)
-MIN_EPSILON = 0.01
-
+EPSILON_DECAY = 0.999
+MIN_EPSILON = 0.05
 
 # --- Colors ---
 WHITE = (255, 255, 255)
@@ -42,3 +50,9 @@ RED = (255, 0, 0)
 BLUE = (0, 0, 255)
 GRAY = (100, 100, 100)
 YELLOW = (255, 255, 0)
+
+OBSTACLES = [
+    WALL, WALL_UP, WALL_DOWN,
+    SOFA_1, SOFA_2, BED, TABLE,
+    CHAIR_UP, CHAIR_DOWN
+]

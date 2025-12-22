@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 from environment import GridWorld
@@ -7,104 +6,104 @@ from config import *
 
 
 def train():
-    # 1. Setup Environment (Headless)
     env = GridWorld(render_mode=False)
     agent = VacuumAgent()
 
-    EPISODES = 100000  # Increased to 50,000 FROM 10000
+    MAX_EPISODES = 20000
+    rewards = []
 
-    # Data storage
-    episode_list = []
-    reward_list = []
+    # -------- EARLY STOPPING PARAMETERS --------
+    WINDOW = 500
+    PATIENCE = 3000
+    IMPROVEMENT_THRESHOLD = 1.02
 
-    # 2. Setup Live Plot
-    print("Initializing Live Dashboard...")
-    plt.ion()
-    fig, ax = plt.subplots(figsize=(10, 6))
+    best_avg = -float("inf")
+    stagnation_counter = 0
+    # ------------------------------------------
 
-    # Line 1: Raw Data (Blue, faint)
-    line, = ax.plot([], [], 'b-', alpha=0.3, label='Episode Reward')
-    # Line 2: Moving Average (Red, thick) - Window 100 for smoother look
-    avg_line, = ax.plot([], [], 'r-', linewidth=2, label='Avg Reward (100 eps)')
+    print("Starting training with Robust Planning Logic...")
 
-    ax.set_title(f"AI Training Performance (Map: {GRID_SIZE}x{GRID_SIZE})")
-    ax.set_xlabel("Episodes")
-    ax.set_ylabel("Total Reward")
-    ax.legend()
-    ax.grid(True)
-
-    print(f"🚀 Starting Training for {EPISODES} episodes...")
-
-    for ep in range(EPISODES):
-        # Reset
+    for ep in range(MAX_EPISODES):
         start_pos = env.reset()
+
         agent.x, agent.y = start_pos
         agent.battery = MAX_BATTERY
         agent.bin = 0
         agent.is_alive = True
+        agent.current_goal = None
+        agent.current_path.clear()
 
         state = agent.get_state(env)
         done = False
         total_reward = 0
         steps = 0
 
-        # Run Episode
-        while not done and steps < 500:
-            action = agent.choose_action(state)
-            reward, done = agent.step(action, env)
+        while not done and steps < 1000:
+            # 1. Choose Goal
+            goal = agent.choose_goal(state)
+
+            # 2. Plan Path (if needed)
+            planning_failed = False
+            if agent.current_goal != goal or not agent.current_path:
+                agent.current_goal = goal
+                success = agent.plan(env, goal)
+
+                # --- FIX: Handle Planning Failure ---
+                if not success:
+                    planning_failed = True
+                    # Penalty for picking an invalid/unreachable goal
+                    # This prevents the "Frozen Robot" bug
+                    reward = -10
+
+                    # 3. Execute Step
+            if planning_failed:
+                # If plan failed, don't move. Just learn and retry.
+                r1 = 0
+                r2 = 0
+            else:
+                # Normal execution
+                r1, done = agent.move_step(env)
+                r2 = agent.interact(env)
+                reward = r1 + r2
+
+            # 4. Learn
             next_state = agent.get_state(env)
-            agent.learn(state, action, reward, next_state)
+            agent.learn(state, goal, reward, next_state)
 
             state = next_state
             total_reward += reward
             steps += 1
 
-        # Decay Epsilon
+        rewards.append(total_reward)
+
+        # -------- EPSILON DECAY --------
         if agent.epsilon > MIN_EPSILON:
             agent.epsilon *= EPSILON_DECAY
 
-        # Store Data
-        episode_list.append(ep)
-        reward_list.append(total_reward)
+        # -------- LOGGING --------
+        if ep % 1000 == 0:
+            avg_100 = np.mean(rewards[-100:]) if len(rewards) >= 100 else np.mean(rewards)
+            print(f"Episode {ep} | Avg Reward (100): {avg_100:.2f} | Epsilon: {agent.epsilon:.3f}")
 
-        # Update Plot Every 1000 Episodes (As requested)
-        if ep % 1000 == 0 and len(episode_list) > 0:
-            # Update Raw Data
-            line.set_xdata(episode_list)
-            line.set_ydata(reward_list)
+        # -------- EARLY STOPPING CHECK --------
+        if len(rewards) >= WINDOW:
+            current_avg = np.mean(rewards[-WINDOW:])
+            if current_avg > best_avg * IMPROVEMENT_THRESHOLD:
+                best_avg = current_avg
+                stagnation_counter = 0
+            else:
+                stagnation_counter += 1
 
-            # Calculate and Plot Running Average (Window 100)
-            window_size = 100
-            if len(reward_list) >= window_size:
-                avg_rewards = np.convolve(reward_list, np.ones(window_size) / window_size, mode='valid')
+            if stagnation_counter >= PATIENCE:
+                print(f"\nEarly stopping triggered at episode {ep}")
+                print(f"Best {WINDOW}-episode avg reward: {best_avg:.2f}")
+                break
 
-                # Align X-axis
-                avg_x = episode_list[len(episode_list) - len(avg_rewards):]
-
-                avg_line.set_xdata(avg_x)
-                avg_line.set_ydata(avg_rewards)
-
-            # Adjust Scale
-            try:
-                ax.relim()
-                ax.autoscale_view()
-                fig.canvas.draw()
-                fig.canvas.flush_events()
-            except ValueError:
-                pass
-
-                # Console Log (Average of last 1000 for clarity)
-            block_avg = np.mean(reward_list[-1000:]) if len(reward_list) >= 1000 else np.mean(reward_list)
-            print(f"Eps {ep} | Avg Reward (Last 1k): {block_avg:.1f} | Epsilon: {agent.epsilon:.2f}")
-
-    # Save Brain
+    # -------- SAVE TRAINED POLICY --------
     with open("brain.pkl", "wb") as f:
         pickle.dump(agent.q_table, f)
 
-    print("Training Complete. Brain Saved.")
-    print("Close the graph window to exit.")
-    plt.ioff()
-    plt.show()
+    print("Training complete. Policy saved to brain.pkl")
 
 
 if __name__ == "__main__":
